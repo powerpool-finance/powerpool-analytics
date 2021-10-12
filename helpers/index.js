@@ -11,6 +11,7 @@ module.exports = (web3, ethers) => {
 
   const h = {
     maxUint: '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
+    zeroAddress: '0x0000000000000000000000000000000000000000',
     ether,
     fromEther(wei) {
       return parseFloat(fromWei(wei.toString(10), 'ether'));
@@ -46,7 +47,7 @@ module.exports = (web3, ethers) => {
           }, blockNumber);
           return web3.eth.abi.decodeParameters(contract._jsonInterface.filter(i => i.name === methodName)[0].outputs, result);
         } catch (e) {
-          console.error('callContract error', contract._address, methodName, e);
+          console.error('callContract error', contract._address, methodName, e, args);
           throw e;
         }
       } else {

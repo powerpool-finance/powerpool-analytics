@@ -14,41 +14,45 @@ task('dump-vault-tvls', 'Dump vault tvls').setAction(async (__, {ethers, network
 
   const BPool = artifacts.require('BPool');
   const {web3} = BPool;
-  const {mulScalarBN, fromEther, callContract} = require('../helpers/index')(web3, ethers);
-  const pool = await BPool.at('0x9ba60ba98413a60db4c651d4afe5c937bbd8044b');
-  const tokens = await pool.contract.methods.getCurrentTokens().call();
-  // const tokens = [
-  //   '0x3B96d491f067912D18563d56858Ba7d6EC67a6fa',
-  //   '0x27b7b1ad7288079A66d12350c828D3C00A6F07d7',
-  //   '0x84E13785B5a27879921D6F685f041421C7F482dA',
-  //   '0x5fa5b62c8af877cb37031e0a3b2f34a78e3c56a6',
-  //   '0xc4daf3b5e2a9e93861c3fbdd25f1e943b8d87417',
-  //   '0x6ede7f19df5df6ef23bd5b9cedb651580bdf56ca'
-  // ];
+  const {mulScalarBN, fromEther, callContract, zeroAddress} = require('../helpers/index')(web3, ethers);
+  // const pool = await BPool.at('0x9ba60ba98413a60db4c651d4afe5c937bbd8044b');
+  // const tokens = await pool.contract.methods.getCurrentTokens().call();
+  const tokens = [
+    '0x2DfB14E32e2F8156ec15a2c21c3A6c053af52Be8',
+    '0x25212Df29073FfFA7A67399AcEfC2dd75a831A1A',
+    '0xB4AdA607B9d6b2c9Ee07A275e9616B84AC560139',
+    '0x3B96d491f067912D18563d56858Ba7d6EC67a6fa',
+    '0x8cc94ccd0f3841a468184aCA3Cc478D2148E1757',
+  ];
+
+  const days = parseInt(process.env.DAYS) || 60;
 
   const curveRegistry = new web3.eth.Contract(JSON.parse(curveRegistryAbi), '0x90E00ACe148ca3b23Ac1bC8C240C2a7Dd9c2d7f5');
 
   let csv = 'Block,Date';
   await pIteration.forEachSeries(tokens, async (tokenAddress) => {
     const vault = new web3.eth.Contract(JSON.parse(vaultAbi), tokenAddress);
-    const symbol = (await callContract(vault, 'symbol'))[0].split('-')[1];
+    let symbol = (await callContract(vault, 'symbol'));
+    symbol = symbol.split('-')[1] || symbol;
     csv += ',' + symbol + ' Price,' + symbol + ' TVL';
   });
 
+  console.log(csv);
+
   let currentBlock = await web3.eth.getBlockNumber();
   const csvLines = [];
-  for(let i = 1; i <= 60; i++) {
+  for(let i = 1; i <= days; i++) {
     const prices = [];
     const tvls = [];
     const block = await web3.eth.getBlock(currentBlock);
     await pIteration.forEach(tokens, async (tokenAddress, index) => {
       const vault = new web3.eth.Contract(JSON.parse(vaultAbi), tokenAddress);
       const [pricePerShare, token, balance] = await Promise.all([
-        callContract(vault, 'pricePerShare', [], null, currentBlock),
-        callContract(vault, 'token', [], null, currentBlock),
-        callContract(vault, 'totalAssets', [], null, currentBlock),
+        callContract(vault, 'pricePerShare', [], null, currentBlock).catch(() => ['0']),
+        callContract(vault, 'token', [], null, currentBlock).catch(() => [zeroAddress]),
+        callContract(vault, 'totalAssets', [], null, currentBlock).catch(() => ['0']),
       ]);
-      const virtualPrice = await callContract(curveRegistry, 'get_virtual_price_from_lp_token', [token[0]], null, currentBlock);
+      const virtualPrice = await callContract(curveRegistry, 'get_virtual_price_from_lp_token', [token[0]], null, currentBlock).catch(() => ['0']);
       prices[index] = mulScalarBN(pricePerShare[0], virtualPrice[0]);
       tvls[index] = mulScalarBN(balance[0], virtualPrice[0]);
     });
@@ -56,6 +60,7 @@ task('dump-vault-tvls', 'Dump vault tvls').setAction(async (__, {ethers, network
     tvls.forEach((tvl, i) => {
       csvLine +=  ',' + Math.round(fromEther(prices[i]) * 10**4) / 10**4 + ',' + Math.round(fromEther(tvl));
     })
+    console.log(csvLine);
     csvLines.push(csvLine);
     currentBlock -= 6461;
   }
